@@ -56,24 +56,24 @@ def main(argv):
 
         # we create a temporary folder and a test path to temporary files and store results respectively
 
-        if not os.path.exists("../temp"):
-            os.makedirs("../temp")
+        if not os.path.exists("temp"):
+            os.makedirs("temp")
 
-        if not os.path.exists("../tests"):
-            os.makedirs("../tests")
+        if not os.path.exists("tests"):
+            os.makedirs("tests")
 
         # we save it
-        with open('../temp/dataset_dev_temp.json', 'w') as outfile:
+        with open('temp/dataset_dev_temp.json', 'w') as outfile:
             json.dump(z_dev, outfile)
     
-        with open('../temp/dataset_test_temp.json', 'w') as outfile:
+        with open('temp/dataset_test_temp.json', 'w') as outfile:
             json.dump(z_test, outfile)
 
         os.system("python3 -m snips_nlu download en")
-        os.system("snips-nlu train-test-metrics ../temp/dataset_dev_temp.json ../temp/dataset_test_temp.json ../tests/snips_results")
+        os.system("snips-nlu train-test-metrics temp/dataset_dev_temp.json temp/dataset_test_temp.json tests/snips_results")
 
-        os.remove("../temp/dataset_dev_temp.json")
-        os.remove("../temp/dataset_test_temp.json")
+        os.remove("temp/dataset_dev_temp.json")
+        os.remove("temp/dataset_test_temp.json")
 
     except getopt.GetoptError:
         print("error, required : test_benchmark_solution -d <dev_file> -t <test_file>")

@@ -31,81 +31,20 @@ def main(argv):
     entities = []
 
     try:
-        opts, args = getopt.getopt(argv, "dt:amr:", ["dev_file=", "test_file=", "assets_path=", "models_path=", "results_path="])
-        dev_file = opts[0][1]
-        test_file = opts[1][1]
-        assets_path = opts[2][1]
-        models_path = opts[3][1]
-        results_path = opts[4][1]
+        opts, args = getopt.getopt(argv, "fiet:o:", ["input_file", "intent_model=", "entities_model=", "assets_path=", "output_file="])
+        input_file = opts[0][1]
+        intent_model = opts[1][1]
+        entities_model = opts[2][1]
+        assets_path = opts[3][1]
+        output_file = opts[4][1]
 
-        with open(dev_file) as json_file:
-            data_dev = json.load(json_file)
-        for intent in data_dev["intents"]:
-            intents.append(intent)
-        for sentences in list(data_dev["intents"].values()):
-            for sentence in sentences["utterances"]:
-                for sub_sentence in sentence["data"]:
-                    if "entity" in sub_sentence:
-                        entities.append(sub_sentence["entity"])
+        intents = f.read(assets_path+"/intents.txt").split("\n")
+        entities = f.read(assets_path+"entities.txt").split("\n")
 
-        entities = list(set(entities))
-
-        with open(test_file) as json_file:
-            data_test = json.load(json_file)
-
-        # X_dev and X_test contain 3 sublists each :
-            # - the first one contains every sentence
-            # - the second one contains the entity tag for each word
-            # - the third one contains the intent for each sentence
-        X_dev = [[], [], []]
-        X_test = [[], [], []]
-
-        for X, data in zip([X_dev, X_test], [data_dev, data_test]):
-            for intent, sentences in zip(data["intents"], list(data["intents"].values())):
-                for i, sentence in enumerate(sentences["utterances"]):
-                    text = []
-                    ner_tags = []
-                    for sub_sentence in sentence["data"]:
-                        text += sub_sentence["text"].split()
-                        if "entity" in sub_sentence:
-                            ner_tags += len(text)*[sub_sentence["entity"]]
-                        else:
-                            # "O" means no tag
-                            ner_tags += len(text)*["O"]
-                    X[0].append(text)
-                    X[1].append(ner_tags)
-                    X[2].append(intent)
-
-        # we append "O" and "PAD" as entities
-        entities.append("O")
-        entities.append("PAD")
-
-        # we create an assets folder where we store entities and intents
-        if not os.path.exists(assets_path):
-            os.makedirs(assets_path)
-        else:
-            for f in os.listdir(assets_path):
-                os.remove(os.path.join(assets_path, f))
-
-        # we create a test folder where we store results
-        if not os.path.exists(results_path):
-            os.makedirs(results_path)
-        else:
-            for f in os.listdir(results_path):
-                os.remove(os.path.join(results_path, f))
- 
-        # we save entities and intents to use it later for inference
-        with open(assets_path+"/entities.txt", "a") as f:
-            for entity in entities:
-                f.write(entity+"\n")
-
-        with open(assets_path+"/intents.txt", "a") as f:
-            for intent in intents:
-                f.write(intent+"\n")
-
-        with open(assets_path+"/hyperparameters.txt", "a") as f:
-            f.write("MAX_LEN : ", MAX_LEN+"\n")
-            f.write("batch size : ", bs+"\n")
+        # data_test is a list containing every sentence in which we will perform intent and entity
+        # recognition
+        with open(input_file) as f:
+            data_test = f.read().split("\n")
 
         # we associate an ID for each entity, and an ID for each intent, and two dictionaries for the mapping
         dict_intents = {intents[i]: i for i in range(len(intents))}
@@ -117,30 +56,14 @@ def main(argv):
         # we load the BERT tokenizer
         tokenizer = BertTokenizer.from_pretrained('bert-base-cased', do_lower_case=False)
 
-        # now, we will tokenize every sentence. As we are working with subword, and not word, we need to complete the tag list to fit every sentence
-        tokenized_X_dev = [[], [], []]
-        tokenized_X_test = [[], [], []]
+        # input for the inference model
+        tokenized_data_test = []
 
-        for X, tokenized_X in zip([X_dev, X_test], [tokenized_X_dev, tokenized_X_test]):
-            for sentence, text_labels in zip(X[0], X[1]):
+        for sentence in data_test:
+            for word, label in zip(sentence, text_labels):
 
-                tokenized_sentence = []
-                labels = []
-
-                for word, label in zip(sentence, text_labels):
-
-                    tokenized_word = tokenizer.tokenize(word)
-                    n_subwords = len(tokenized_word)
-
-                    tokenized_sentence.extend(tokenized_word)
-
-                    labels.extend([label] * n_subwords)
-
-                tokenized_X[0].append(tokenized_sentence)
-                tokenized_X[1].append(labels)
-            
-        tokenized_X_dev[2] = X_dev[2]
-        tokenized_X_test[2] = X_test[2]
+                tokenized_word = tokenizer.tokenize(word)
+                tokenized_data_test.append(tokenized_word)
 
         # hyperparameters
 
@@ -149,9 +72,6 @@ def main(argv):
 
         # batch size for the training
         bs = 128
-
-        # number of epochs during model training
-        epochs = 1
 
         # parameter we use to control gradient vanishing
         max_grad_norm = 1.0
@@ -198,7 +118,7 @@ def main(argv):
         model_intents.fit(input_ids_dev, tags_intents_dev)
 
         # we save the model
-        dump(model_intents, models_path+"/model_intent.joblib")
+        dump(model_intents, intent_model_path+"/model_intent.joblib")
 
         print("Accuracy on test set for Intent Classification : ", model_intents.score(input_ids_test, tags_intents_test))
 
@@ -374,14 +294,6 @@ def main(argv):
         print("Test Recall:  {}".format(recall))
         print("Test F1-Score: {}".format(fscore))
         print()
-
-        with open(os.path.join(results_path, "samir_results"), "a") as f:
-            f.write("Epoch : ", epoch)
-            f.write("Test Accuracy: {}".format(precision))
-            f.write("Test Recall:  {}".format(recall))
-            f.write("Test F1-Score: {}".format(fscore))
-            f.write("\n")
-
 
     except getopt.GetoptError:
         print("error, required train --d <dev_file> --t <test_file> --i <intent_model_path> --e <entities_model_path>")
