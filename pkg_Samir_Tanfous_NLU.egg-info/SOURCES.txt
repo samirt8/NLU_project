@@ -1,0 +1,9 @@
+README.md
+setup.py
+bin/test_benchmark_solution_samir_tanfous
+pkg/__init__.py
+pkg_Samir_Tanfous_NLU.egg-info/PKG-INFO
+pkg_Samir_Tanfous_NLU.egg-info/SOURCES.txt
+pkg_Samir_Tanfous_NLU.egg-info/dependency_links.txt
+pkg_Samir_Tanfous_NLU.egg-info/requires.txt
+pkg_Samir_Tanfous_NLU.egg-info/top_level.txt

@@ -1,0 +1,9 @@
+tqdm
+pandas
+numpy
+sklearn
+torch
+transformers
+keras
+snips_nlu
+snips_nlu_metrics
