@@ -1,0 +1,7 @@
+README.md
+setup.py
+pkg/__init__.py
+pkg_Samir_Tanfous.egg-info/PKG-INFO
+pkg_Samir_Tanfous.egg-info/SOURCES.txt
+pkg_Samir_Tanfous.egg-info/dependency_links.txt
+pkg_Samir_Tanfous.egg-info/top_level.txt
