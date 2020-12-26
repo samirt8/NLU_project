@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="pkg-Samir-Tanfous-NLU",
-    version="0.0.5",
+    version="0.0.6",
     author="Samir Tanfous",
     author_email="samir.tanfous@gmail.com",
     description="RUN NLU pipeline",
@@ -20,6 +20,6 @@ setuptools.setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    scripts=["bin/train_samir_tanfous", "bin/test_benchmark_solution_samir_tanfous"],
+    scripts=["bin/train_nlu", "bin/test_benchmark_solution"],
     python_requires='>=3.6',
 )

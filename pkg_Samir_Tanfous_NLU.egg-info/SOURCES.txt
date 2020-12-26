@@ -1,6 +1,7 @@
 README.md
 setup.py
-bin/test_benchmark_solution_samir_tanfous
+bin/test_benchmark_solution
+bin/train_nlu
 pkg/__init__.py
 pkg_Samir_Tanfous_NLU.egg-info/PKG-INFO
 pkg_Samir_Tanfous_NLU.egg-info/SOURCES.txt
