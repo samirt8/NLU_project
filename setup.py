@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="pkg-Samir-Tanfous-NLU",
-    version="0.0.3",
+    version="0.0.4",
     author="Samir Tanfous",
     author_email="samir.tanfous@gmail.com",
     description="RUN NLU pipeline",
