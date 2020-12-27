@@ -31,20 +31,19 @@ def main(argv):
     entities = []
 
     try:
-        opts, args = getopt.getopt(argv, "fiet:o:", ["input_file", "intent_model=", "entities_model=", "assets_path=", "output_file="])
+        opts, args = getopt.getopt(argv, "ima:", ["input_file=", "models_path=", "assets_path="])
         input_file = opts[0][1]
-        intent_model = opts[1][1]
-        entities_model = opts[2][1]
-        assets_path = opts[3][1]
-        output_file = opts[4][1]
+        models_path = opts[1][1]
+        assets_path = opts[2][1]
 
-        intents = f.read(assets_path+"/intents.txt").split("\n")
-        entities = f.read(assets_path+"entities.txt").split("\n")
+        intents = open(assets_path+"/intents.txt").read().split("\n")[:-1]
+        entities = open(assets_path+"/entities.txt").read().split("\n")[:-1]
+
 
         # data_test is a list containing every sentence in which we will perform intent and entity
         # recognition
         with open(input_file) as f:
-            data_test = f.read().split("\n")
+            data_test = f.read().split("\n")[:-1]
 
         # we associate an ID for each entity, and an ID for each intent, and two dictionaries for the mapping
         dict_intents = {intents[i]: i for i in range(len(intents))}
@@ -60,98 +59,51 @@ def main(argv):
         tokenized_data_test = []
 
         for sentence in data_test:
-            for word, label in zip(sentence, text_labels):
-
+            tokenized_sentence = []
+            for word in sentence.split():
                 tokenized_word = tokenizer.tokenize(word)
-                tokenized_data_test.append(tokenized_word)
+                tokenized_sentence.append(tokenized_word)
+
+            tokenized_data_test.append([item for sublist in tokenized_sentence for item in sublist])
 
         # hyperparameters
 
-        # As we need to work with fixed length sentence, we fix it at MAX_LEN, with is the maximum length of sentences in dev and test, we will pad every sentence to fit MAX_LEN
-        MAX_LEN = max(len(sentence) for sentence in tokenized_X_dev[0] + tokenized_X_test[0])
+        with open(assets_path+"/hyperparameters.json") as f:
+            hyperparameters = json.load(f)
 
-        # batch size for the training
-        bs = 128
-
-        # parameter we use to control gradient vanishing
-        max_grad_norm = 1.0
+        MAX_LEN = hyperparameters["MAX_LEN"]
+        bs = hyperparameters["batch_size"]
 
         # here, we convert every subword in sentences to IDs, using BERT tokenizer
+        input_ids_test = pad_sequences([tokenizer.convert_tokens_to_ids(txt) for txt in tokenized_data_test], maxlen=MAX_LEN, dtype="long", value=0.0, truncating="post", padding="post")
 
-        input_ids_dev = pad_sequences([tokenizer.convert_tokens_to_ids(txt) for txt in tokenized_X_dev[0]],
-                              maxlen=MAX_LEN, dtype="long", value=0.0,
-                              truncating="post", padding="post")
-
-        input_ids_test = pad_sequences([tokenizer.convert_tokens_to_ids(txt) for txt in tokenized_X_test[0]],
-                              maxlen=MAX_LEN, dtype="long", value=0.0,
-                              truncating="post", padding="post")
-
-        # we convert every entity output to IDs
-
-        tags_entities_dev = pad_sequences([[dict_entities.get(l) for l in lab] for lab in tokenized_X_dev[1]],
-                             maxlen=MAX_LEN, value=dict_entities["PAD"], padding="post",
-                             dtype="long", truncating="post")
-
-        tags_entities_test = pad_sequences([[dict_entities.get(l) for l in lab] for lab in tokenized_X_test[1]],
-                             maxlen=MAX_LEN, value=dict_entities["PAD"], padding="post",
-                             dtype="long", truncating="post")
-
-        # we do the same for the intents
-
-        tags_intents_dev = [dict_intents.get(l) for l in tokenized_X_dev[2]]
-
-        tags_intents_test = [dict_intents.get(l) for l in tokenized_X_test[2]]
 
         # for sentence where we use padding, we add mask tokens to ignore it during the training
 
-        attention_masks_dev = [[float(i != 0.0) for i in ii] for ii in input_ids_dev]
         attention_masks_test = [[float(i != 0.0) for i in ii] for ii in input_ids_test]
 
         #===================================
         #     1. Intention Detection 
         #===================================
 
-        # we will use a simple Logistic Regression
+        print("Inference for Intent Classification")
 
-        print("Training Logistic Model for Intent Classification")
-        model_intents = linear_model.LogisticRegression(solver="liblinear", penalty="l1", C=0.1, tol=0.0000001)
-        model_intents.fit(input_ids_dev, tags_intents_dev)
+        # we load the model
+        model_intents = load(models_path+"/model_intent.joblib")
 
-        # we save the model
-        dump(model_intents, intent_model_path+"/model_intent.joblib")
-
-        print("Accuracy on test set for Intent Classification : ", model_intents.score(input_ids_test, tags_intents_test))
+        intents_predictions = model_intents.predict(input_ids_test)
 
         #===================================
         #     2 : Entity Detection
         #===================================
 
-        # device : GPU or CPU, it will be faster on GPU
-
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print("device : ", device)
-        n_gpu = torch.cuda.device_count()
-
-        # as we will use PyTorch, we need to convert Numpy arrays to Tensors
-
-        input_ids_dev = torch.tensor(input_ids_dev).to(device)
-        input_ids_test = torch.tensor(input_ids_test).to(device)
-        tags_entities_dev = torch.tensor(tags_entities_dev).to(device)
-        tags_entities_test = torch.tensor(tags_entities_test).to(device)
-        tags_intents_dev = torch.tensor(tags_intents_dev).to(device)
-        tags_intents_test = torch.tensor(tags_intents_test).to(device)
-        attention_masks_dev = torch.tensor(attention_masks_dev).to(device)
-        attention_masks_test = torch.tensor(attention_masks_test).to(device)
+        input_ids_test = torch.tensor(input_ids_test)
+        attention_masks_test = torch.tensor(attention_masks_test)
 
         # we convert the data to load it by batch to the model
 
-        dev_data = TensorDataset(input_ids_dev, attention_masks_dev, tags_entities_dev)
-        dev_sampler = RandomSampler(dev_data)
-        dev_dataloader = DataLoader(dev_data, sampler=dev_sampler, batch_size=bs)
-
-        test_data = TensorDataset(input_ids_test, attention_masks_test, tags_entities_test)
-        test_sampler = SequentialSampler(test_data)
-        test_dataloader = DataLoader(test_data, sampler=test_sampler, batch_size=bs)
+        test_data = TensorDataset(input_ids_test, attention_masks_test)
+        test_dataloader = DataLoader(test_data, batch_size=bs)
 
         # Entity_Recognition is the model we use for entity detection
 
@@ -170,133 +122,57 @@ def main(argv):
                 x = x.view(-1, len(entities), MAX_LEN)
                 return x
 
-        if torch.cuda.is_available():
-            model = Entity_Recognition().cuda()
-        else:
-            model = Entity_Recognition()
+        model_entities = Entity_Recognition()
+        
+        # we load the parameters of the model
 
-        # we use AdamW optimizer
+        checkpoint = torch.load(models_path+"/model_entities.pt", map_location=lambda storage, loc: storage)
+        from collections import OrderedDict
+        new_checkpoint = OrderedDict()
+        for k, v in checkpoint.items():
+            new_k = k[7:]
+            new_checkpoint[new_k] = v
 
-        for name, param in model.named_parameters():
-            if 'classifier' not in name: # classifier layer
-                param.requires_grad = True
-            else:
-                param.requires_grad = True
-
-        optimizer = AdamW(
-        model.parameters(),
-        lr=3e-5,
-        eps=1e-8
-        )
-
-        # we use Cross Entropy Loss
-
-        criterion = torch.nn.CrossEntropyLoss()
-
-        for epoch in trange(epochs, desc="Epoch"):
-
-            print("epoch : ", epoch)
-
-            best_f1_score = 0
-
-            # ========================================
-            #               Training
-            # ========================================
-            # Perform one full pass over the training set
-
-            # Put the model into training mode
-            model.train()
-            # Reset the total loss for this epoch
-            total_loss = 0
-
-            # Training loop
-            for b_input_ids, b_input_mask, b_labels in dev_dataloader:
-                b_input_ids, b_input_mask, b_labels = b_input_ids.cuda(), b_input_mask.cuda(), b_labels.cuda()
-
-                b_input_ids.requires_grad = False
-                b_input_mask.requires_grad = False
-                b_labels.requires_grad = False
-
-                # Always clear any previously calculated gradients before performing a backward pass.
-                model.zero_grad()
-
-                # forward pass
-                outputs = model(b_input_ids, b_input_mask)
-
-                # get the loss
-                loss = criterion(outputs, b_labels)
-
-                # Perform a backward pass to calculate the gradients.
-                loss.backward()
-
-                # track train loss
-                total_loss += loss.item()
-
-                # Clip the norm of the gradient
-                # This is to help prevent the "exploding gradients" problem.
-                torch.nn.utils.clip_grad_norm_(parameters=model.parameters(), max_norm=max_grad_norm)
-
-                # update parameters
-                optimizer.step()
-                optimizer.zero_grad()
-
-        # Calculate the average loss over the training data.
-        avg_dev_loss = total_loss / len(dev_dataloader)
-        print("Average train loss: {}".format(avg_dev_loss))
-
+        model_entities.load_state_dict(checkpoint)
 
         # ========================================
-        #               Validation
+        #               Inference
         # ========================================
-        # After the completion of each training epoch, measure our performance on
-        # our validation set.
 
-        # Put the model into evaluation mode
-        model.eval()
+        predictions = []
+        for nb_batch, batch in enumerate(test_dataloader):
+            batch = tuple(t for t in batch)
+            b_input_ids, b_input_mask = batch
 
-        # Reset the validation loss for this epoch.
-        test_loss, test_accuracy = 0, 0
-        nb_test_steps, nb_test_examples = 0, 0
-        predictions , true_labels = [], []
-        for batch in test_dataloader:
-            batch = tuple(t.to(device) for t in batch)
-            b_input_ids, b_input_mask, b_labels = batch
-
-            # Telling the model not to compute or store gradients,
-            # saving memory and speeding up validation
             with torch.no_grad():
-                b_input_ids, b_input_mask, b_labels = b_input_ids.cuda(), b_input_mask.cuda(), b_labels.cuda()
                 # Forward pass, calculate logit predictions
                 # This will return the logits rather than the loss because we have not provided labels
-                outputs = model(b_input_ids, attention_masks=b_input_mask)
+                outputs = model_entities(b_input_ids, attention_masks=b_input_mask)
             # Move logits and labels to CPU
             logits = outputs.detach().cpu().numpy()
-            label_ids = b_labels.to('cpu').numpy()
+            predictions = [list(p) for p in np.argmax(logits, axis=1)]
 
-            # Calculate the accuracy for this batch of test sentences
-            test_loss += outputs.mean().item()
-            predictions.extend([list(p) for p in np.argmax(logits, axis=1)])
-            true_labels.extend(label_ids)
+            for i, prediction in enumerate(predictions):
+                print(data_test[nb_batch*bs + i])
+                print("intent : ", reverse_dict_intents[intents_predictions[nb_batch*bs + i]]) 
+                #print("entities : ", [reverse_dict_entities[p] for p in prediction if reverse_dict_entities[p]!="PAD"])
+                # these are the sentence and prediction when we deal with words, and not subwords
+                new_tokens, new_prediction = [], []
+                for token, label_idx in zip(tokenizer.convert_ids_to_tokens(input_ids_test[nb_batch*bs + i]), prediction):
+                    if token.startswith("##"):
+                        new_tokens[-1] = new_tokens[-1] + token[2:]
+                    elif token == "[PAD]":
+                        continue
+                    else:
+                        new_prediction.append(reverse_dict_entities[label_idx])
+                        new_tokens.append(token)
 
-        test_loss = test_loss / len(test_dataloader)
-        print("Test loss: {}".format(test_loss))
-        pred_tags = [reverse_dict_entities[p_i] for p, l in zip(predictions, true_labels)
-                                     for p_i, l_i in zip(p, l) if reverse_dict_entities[l_i] != "PAD"]
-        valid_tags = [reverse_dict_entities[l_i] for l in true_labels
-                                      for l_i in l if reverse_dict_entities[l_i] != "PAD"]
-        # We save the best model
-        if precision_recall_fscore_support(pred_tags, valid_tags, average="macro")[2] > best_f1_score:
-            torch.save(model.state_dict(), entities_model_path+"/model_entities.pt")
-
-        precision, recall, fscore, _ = precision_recall_fscore_support(pred_tags, valid_tags, average="macro")
-
-        print("Test Accuracy: {}".format(precision))
-        print("Test Recall:  {}".format(recall))
-        print("Test F1-Score: {}".format(fscore))
-        print()
+                for token, label in zip(new_tokens, new_prediction):
+                    print("{}\t{}".format(label, token))
+                print()
 
     except getopt.GetoptError:
-        print("error, required train --d <dev_file> --t <test_file> --i <intent_model_path> --e <entities_model_path>")
+        print("error, required evaluate --i <input_file> --m <models_path> --a <assets_path>")
 
 if __name__ == "__main__":
     main(sys.argv[1:])

@@ -1,5 +1,6 @@
 README.md
 setup.py
+bin/evaluate
 bin/test_benchmark_solution
 bin/train_nlu
 pkg/__init__.py

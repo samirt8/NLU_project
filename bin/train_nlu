@@ -11,7 +11,7 @@ from tqdm import tqdm, trange
 import pandas as pd
 import numpy as np
 
-from sklearn import linear_model
+from sklearn import linear_model, ensemble
 from joblib import dump, load
 import torch
 from transformers import BertTokenizer, BertConfig
@@ -80,6 +80,10 @@ def main(argv):
         entities.append("O")
         entities.append("PAD")
 
+        # we create the models path, if not exists
+        if not os.path.exists(models_path):
+            os.makedirs(models_path)
+
         # we create an assets folder where we store entities and intents
         if not os.path.exists(assets_path):
             os.makedirs(assets_path)
@@ -102,10 +106,6 @@ def main(argv):
         with open(assets_path+"/intents.txt", "a") as f:
             for intent in intents:
                 f.write(intent+"\n")
-
-        with open(assets_path+"/hyperparameters.txt", "a") as f:
-            f.write("MAX_LEN : ", MAX_LEN+"\n")
-            f.write("batch size : ", bs+"\n")
 
         # we associate an ID for each entity, and an ID for each intent, and two dictionaries for the mapping
         dict_intents = {intents[i]: i for i in range(len(intents))}
@@ -148,13 +148,18 @@ def main(argv):
         MAX_LEN = max(len(sentence) for sentence in tokenized_X_dev[0] + tokenized_X_test[0])
 
         # batch size for the training
-        bs = 128
+        bs = 16
 
         # number of epochs during model training
-        epochs = 1
+        epochs = 30
 
         # parameter we use to control gradient vanishing
         max_grad_norm = 1.0
+
+        dict_hyperparameters = {"MAX_LEN": MAX_LEN, "batch_size": bs, "epochs": epochs}
+       # here, we save the hyperparameters in the assets folder
+        with open(assets_path+"/hyperparameters.json", "w") as f:
+            json.dump(dict_hyperparameters, f)
 
         # here, we convert every subword in sentences to IDs, using BERT tokenizer
 
@@ -193,8 +198,8 @@ def main(argv):
 
         # we will use a simple Logistic Regression
 
-        print("Training Logistic Model for Intent Classification")
-        model_intents = linear_model.LogisticRegression(solver="liblinear", penalty="l1", C=0.1, tol=0.0000001)
+        print("Training Gradient Boosting for Intent Classification")
+        model_intents = ensemble.GradientBoostingClassifier(n_estimators=500, max_depth=4)
         model_intents.fit(input_ids_dev, tags_intents_dev)
 
         # we save the model
@@ -366,7 +371,7 @@ def main(argv):
                                       for l_i in l if reverse_dict_entities[l_i] != "PAD"]
         # We save the best model
         if precision_recall_fscore_support(pred_tags, valid_tags, average="macro")[2] > best_f1_score:
-            torch.save(model.state_dict(), entities_model_path+"/model_entities.pt")
+            torch.save(model.state_dict(), models_path+"/model_entities.pt")
 
         precision, recall, fscore, _ = precision_recall_fscore_support(pred_tags, valid_tags, average="macro")
 
@@ -376,15 +381,15 @@ def main(argv):
         print()
 
         with open(os.path.join(results_path, "samir_results"), "a") as f:
-            f.write("Epoch : ", epoch)
-            f.write("Test Accuracy: {}".format(precision))
-            f.write("Test Recall:  {}".format(recall))
-            f.write("Test F1-Score: {}".format(fscore))
+            f.write("Epoch : "+str(epoch)+"\n")
+            f.write("Test Accuracy: {}".format(precision)+"\n")
+            f.write("Test Recall:  {}".format(recall)+"\n")
+            f.write("Test F1-Score: {}".format(fscore)+"\n")
             f.write("\n")
 
 
     except getopt.GetoptError:
-        print("error, required train --d <dev_file> --t <test_file> --i <intent_model_path> --e <entities_model_path>")
+        print("error, required train_nlu --d <dev_file> --t <test_file> --a <assets_path> --m <models_path> --r <results_path>")
 
 if __name__ == "__main__":
     main(sys.argv[1:])

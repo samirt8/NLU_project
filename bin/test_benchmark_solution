@@ -11,9 +11,10 @@ def main(argv):
     entities = []
 
     try:
-        opts, args = getopt.getopt(argv, "dt:", ["dev_file=", "test_file="])
+        opts, args = getopt.getopt(argv, "dt:r:", ["dev_file=", "test_file=", "results_path="])
         dev_file = opts[0][1]
         test_file = opts[1][1]
+        results_path = opts[2][1]
         with open(dev_file) as json_file:
             # we will test Sonos model, by adding "slot_name"
             data_dev = json.load(json_file)
@@ -59,8 +60,8 @@ def main(argv):
         if not os.path.exists("temp"):
             os.makedirs("temp")
 
-        if not os.path.exists("tests"):
-            os.makedirs("tests")
+        if not os.path.exists(results_path):
+            os.makedirs(results_path)
 
         # we save it
         with open('temp/dataset_dev_temp.json', 'w') as outfile:
@@ -70,13 +71,13 @@ def main(argv):
             json.dump(z_test, outfile)
 
         os.system("python3 -m snips_nlu download en")
-        os.system("snips-nlu train-test-metrics temp/dataset_dev_temp.json temp/dataset_test_temp.json tests/snips_results")
+        os.system("snips-nlu train-test-metrics temp/dataset_dev_temp.json temp/dataset_test_temp.json "+str(results_path)+"/snips_results")
 
         os.remove("temp/dataset_dev_temp.json")
         os.remove("temp/dataset_test_temp.json")
 
     except getopt.GetoptError:
-        print("error, required : test_benchmark_solution -d <dev_file> -t <test_file>")
+        print("error, required : test_benchmark_solution --d <dev_file> --t <test_file> --r <results_path>")
         sys.exit(2)
 
 
